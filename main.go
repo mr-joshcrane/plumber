@@ -6,23 +6,17 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"time"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awsxrayexporter"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awsutils"
+	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/stdout"
-	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/otel/baggage"
-	"go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/propagation"
-	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
-	processor "go.opentelemetry.io/otel/sdk/metric/processor/basic"
-	"go.opentelemetry.io/otel/sdk/metric/selector/simple"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 )
 
 func performAction(action string) {
@@ -35,49 +29,30 @@ func performAction(action string) {
 
 func main() {
 	action := os.Args[1]
-	// exporter, err := stdout.NewExporter(
-	// 	stdout.WithPrettyPrint(),
-	// )
 
-	// if err != nil {
-	// 	log.Fatalf("failed to initialize stdout export pipeline: %v", err)
-
-	// }
 	ctx := context.Background()
-	set := component.ExporterCreateSettings{}
-	configSettings := config.NewExporterSettings(config.NewIDWithName("Exporters", "pipeline"))
-	config := config
+	buildInfo := component.DefaultBuildInfo()
+	logger := zap.NewExample()
+	set := component.ExporterCreateSettings{ logger, buildInfo,	}
+	config := awsxrayexporter.NewFactory().CreateDefaultConfig()
 
-	exporter, err := awsxrayexporter.NewFactory().CreateTracesExporter(
+	tExporter, err := awsxrayexporter.NewFactory().CreateTracesExporter(
 		ctx, set, config,
 	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	
+	tp := sdktrace.NewTracerProvider()
 
-
-	bsp := sdktrace.NewBatchSpanProcessor(exporter)
-	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(bsp))
 
 	// Handle this error in a sensible manner where possible
 	defer func() { _ = tp.Shutdown(ctx) }()
 
-	pusher := controller.New(
-		processor.New(
-			simple.NewWithExactDistribution(),
-			exporter,
-		),
-		controller.WithExporter(exporter),
-		controller.WithCollectPeriod(5*time.Second),
-	)
-
-	err = pusher.Start(ctx)
-	if err != nil {
-		log.Fatalf("failed to initialize metric controller: %v", err)
-	}
 
 	// Handle this error in a sensible manner where possible
-	defer func() { _ = pusher.Stop(ctx) }()
 
 	otel.SetTracerProvider(tp)
-	global.SetMeterProvider(pusher.MeterProvider())
 	propagator := propagation.NewCompositeTextMapPropagator(propagation.Baggage{}, propagation.TraceContext{})
 	otel.SetTextMapPropagator(propagator)
 
@@ -92,5 +67,7 @@ func main() {
 		performAction(action)
 
 		span.AddEvent("Performing Action", trace.WithAttributes(attribute.String("command", action)))
+		traces := pdata.NewTraces()
+		tExporter.ConsumeTraces(ctx, traces)
 	}(ctx)
 }

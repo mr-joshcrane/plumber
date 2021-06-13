@@ -9,6 +9,8 @@ replace github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/x
 require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awsxrayexporter v0.28.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/awsutil v0.28.0 // indirect
+	go.opencensus.io v0.23.0 // indirect
+	go.opentelemetry.io/collector v0.28.0 // indirect
 	go.opentelemetry.io/otel v0.19.0 // indirect
 	go.opentelemetry.io/otel/exporters/stdout v0.19.0 // indirect
 	go.opentelemetry.io/otel/metric v0.19.0 // indirect
